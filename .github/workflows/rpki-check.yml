@@ -1,0 +1,46 @@
+name: RPKI Snapshot
+on:
+  schedule:
+    - cron: '57 */3 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'net253_bgp.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rpki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate RPKI
+        run: |
+          ASN=396952
+          ISSUES=0
+          PREFIXES=$(yq -r '.netblocks4[].prefix' net253_bgp.yml)
+          PREFIXES="$PREFIXES $(yq -r '.netblocks6[].prefix' net253_bgp.yml)"
+          for PREFIX in $PREFIXES; do
+            ENCODED_PREFIX=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${PREFIX}', safe=''))")
+            echo ${PREFIX}
+            STATE=$(curl -s "https://stat.ripe.net/data/rpki-validation/data.json?resource=AS${ASN}&prefix=${ENCODED_PREFIX}" | jq -r '.data.validating_roas[0].validity // .data.status')
+
+            if [ "$STATE" = "valid" ]; then
+              echo "OK:   ${PREFIX}"
+            else
+              echo "::warning::${PREFIX} RPKI status: ${STATE}"
+              ISSUES=$((ISSUES + 1))
+            fi
+          done
+          if [ $ISSUES -gt 0 ]; then
+            echo "::error::${ISSUES} prefix(es) with RPKI issues"
+            exit 1
+          fi
+          echo "All prefixes RPKI valid"
