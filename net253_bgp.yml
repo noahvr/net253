@@ -1,0 +1,29 @@
+peers:
+  - name: net253
+    asn: 396952
+  - name: lumen
+    asn: 3356
+  - name: cogent
+    asn: 174
+  - name: noanet
+    asn: 18113
+netblocks4:
+  - prefix: 199.36.252.0/22
+    description: KPUD customers GPON
+    announce-to: lumen,noanet
+  - prefix: 192.69.184.0/22
+    description: KPUD customers active E
+    announce-to: lumen,cogent
+  - prefix: 23.140.108.0/24
+    description: ipv6 transition
+    announce-to: all
+  - prefix: 204.238.8.0/24
+    description: Phones, Helldyne, 750 locals
+    announce-to: all
+netblocks6:
+  - prefix: 2602:fec2::/32
+    description: primary v6 allocation
+    announce-to: all
+  - prefix: 2602:fec2:fff0::/48
+    description: testblock noanet
+    announce-to: noanet
