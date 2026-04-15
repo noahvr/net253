@@ -6,7 +6,7 @@ peers:
   - name: cogent
     asn: 174
   - name: noanet
-    asn: 18113
+    asn: 18114
 netblocks4:
   - prefix: 199.36.252.0/22
     description: KPUD customers GPON
