@@ -6,6 +6,12 @@ peers:
   - name: noanet
     asn: 16713
 netblocks4:
+  - prefix: 142.248.74.0/24
+    description: lumen testblock
+    announce-to: lumen
+  - prefix: 142.248.75.0/24
+    description: noanet testblock
+    announce-to: noanet
   - prefix: 199.36.252.0/22
     description: KPUD customers GPON
     announce-to: lumen,noanet
@@ -18,6 +24,10 @@ netblocks4:
   - prefix: 204.238.8.0/24
     description: Phones, Helldyne, 750 locals
     announce-to: lumen
+  - prefix: 208.87.163.0/24
+    description: future use
+    announce-to: all
+    
 netblocks6:
   - prefix: 2602:fec2::/32
     description: primary v6 allocation
