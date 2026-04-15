@@ -3,8 +3,6 @@ peers:
     asn: 396952
   - name: lumen
     asn: 3356
-  - name: cogent
-    asn: 174
   - name: noanet
     asn: 16713
 netblocks4:
@@ -13,7 +11,7 @@ netblocks4:
     announce-to: lumen,noanet
   - prefix: 192.69.184.0/22
     description: KPUD customers active E
-    announce-to: lumen,cogent
+    announce-to: lumen,noanet
   - prefix: 23.140.108.0/24
     description: ipv6 transition
     announce-to: all
