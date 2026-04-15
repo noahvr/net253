@@ -6,6 +6,9 @@ peers:
   - name: noanet
     asn: 16713
 netblocks4:
+  - prefix: 23.140.108.0/24
+    description: ipv6 transition
+    announce-to: all
   - prefix: 142.248.74.0/24
     description: lumen testblock
     announce-to: lumen
@@ -18,9 +21,6 @@ netblocks4:
   - prefix: 192.69.184.0/22
     description: KPUD customers active E
     announce-to: lumen,noanet
-  - prefix: 23.140.108.0/24
-    description: ipv6 transition
-    announce-to: all
   - prefix: 204.238.8.0/24
     description: Phones, Helldyne, 750 locals
     announce-to: lumen
