@@ -19,7 +19,7 @@ netblocks4:
     announce-to: all
   - prefix: 204.238.8.0/24
     description: Phones, Helldyne, 750 locals
-    announce-to: all
+    announce-to: lumen
 netblocks6:
   - prefix: 2602:fec2::/32
     description: primary v6 allocation
