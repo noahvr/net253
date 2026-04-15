@@ -1,37 +1,36 @@
 peers:
-  - name: net253
-    asn: 396952
-  - name: lumen
-    asn: 3356
-  - name: noanet
-    asn: 16713
+- name: net253
+  asn: 396952
+- name: lumen
+  asn: 3356
+- name: noanet
+  asn: 16713
 netblocks4:
-  - prefix: 23.140.108.0/24
-    description: ipv6 transition
-    announce-to: all
-  - prefix: 142.248.74.0/24
-    description: lumen testblock
-    announce-to: lumen
-  - prefix: 142.248.75.0/24
-    description: noanet testblock
-    announce-to: noanet
-  - prefix: 199.36.252.0/22
-    description: KPUD customers GPON
-    announce-to: lumen,noanet
-  - prefix: 192.69.184.0/22
-    description: KPUD customers active E
-    announce-to: lumen,noanet
-  - prefix: 204.238.8.0/24
-    description: Phones, Helldyne, 750 locals
-    announce-to: lumen
-  - prefix: 208.87.163.0/24
-    description: future use
-    announce-to: all
-    
+- prefix: 192.69.184.0/22
+  description: KPUD customers active E
+  announce-to: lumen,noanet
+- prefix: 199.36.252.0/22
+  description: KPUD customers GPON
+  announce-to: lumen,noanet
+- prefix: 23.140.108.0/24
+  description: ipv6 transition
+  announce-to: all
+- prefix: 142.248.74.0/24
+  description: lumen testblock
+  announce-to: lumen
+- prefix: 142.248.75.0/24
+  description: noanet testblock
+  announce-to: noanet
+- prefix: 204.238.8.0/24
+  description: Phones, Helldyne, 750 locals
+  announce-to: lumen
+- prefix: 208.87.163.0/24
+  description: future use
+  announce-to: all
 netblocks6:
-  - prefix: 2602:fec2::/32
-    description: primary v6 allocation
-    announce-to: all
-  - prefix: 2602:fec2:fff0::/48
-    description: testblock noanet
-    announce-to: noanet
+- prefix: 2602:fec2::/32
+  description: primary v6 allocation
+  announce-to: all
+- prefix: 2602:fec2:fff0::/48
+  description: testblock noanet
+  announce-to: noanet
