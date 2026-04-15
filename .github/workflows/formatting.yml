@@ -31,8 +31,8 @@ jobs:
               sorted_entries = sorted(
                   data[key],
                   key=lambda e: (
-                      ipaddress.ip_network(e["prefix"], strict=False).prefixlen,
-                      ipaddress.ip_network(e["prefix"], strict=False).network_address
+                      ipaddress.ip_network(e["prefix"], strict=False).network_address,
+                      ipaddress.ip_network(e["prefix"], strict=False).prefixlen
                   )
               )
               if [e["prefix"] for e in sorted_entries] != original:
