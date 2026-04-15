@@ -6,21 +6,39 @@ on:
   push:
     paths:
       - 'net253_bgp.yml'
-
 permissions:
   contents: read
-
 jobs:
   rpki:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - name: Install tools
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
-
+      - name: Check prefix lengths
+        run: |
+          ISSUES=0
+          for PREFIX in $(yq -r '.netblocks4[].prefix' net253_bgp.yml); do
+            LEN=${PREFIX##*/}
+            if [ "$LEN" -gt 24 ]; then
+              echo "::error::${PREFIX} — v4 prefix longer than /24, will be filtered by most peers"
+              ISSUES=$((ISSUES + 1))
+            fi
+          done
+          for PREFIX in $(yq -r '.netblocks6[].prefix' net253_bgp.yml); do
+            LEN=${PREFIX##*/}
+            if [ "$LEN" -gt 48 ]; then
+              echo "::error::${PREFIX} — v6 prefix longer than /48, will be filtered by most peers"
+              ISSUES=$((ISSUES + 1))
+            fi
+          done
+          if [ $ISSUES -gt 0 ]; then
+            echo "::error::${ISSUES} prefix(es) too specific for global routing"
+            exit 1
+          fi
+          echo "All prefix lengths OK"
       - name: Validate RPKI
         run: |
           ASN=396952
@@ -31,7 +49,6 @@ jobs:
             ENCODED_PREFIX=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${PREFIX}', safe=''))")
             echo ${PREFIX}
             STATE=$(curl -s "https://stat.ripe.net/data/rpki-validation/data.json?resource=AS${ASN}&prefix=${ENCODED_PREFIX}" | jq -r '.data.validating_roas[0].validity // .data.status')
-
             if [ "$STATE" = "valid" ]; then
               echo "OK:   ${PREFIX}"
             else
