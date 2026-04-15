@@ -13,7 +13,7 @@ netblocks4:
   description: KPUD customers GPON
   announce-to: lumen,noanet
 - prefix: 23.140.108.0/24
-  description: ipv6 transition
+  description: ipv6 transition block
   announce-to: all
 - prefix: 142.248.74.0/24
   description: lumen testblock
