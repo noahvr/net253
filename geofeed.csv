@@ -1,0 +1,11 @@
+# Net253, LLC geofeed
+# Format: prefix, ISO 3166-1 country, ISO 3166-2 region, city, postal code
+# Reference: RFC 8805
+23.140.108.0/24,US,US-WA,Bainbridge Island,98110
+142.248.74.0/24,US,US-WA,Bainbridge Island,98110
+142.248.75.0/24,US,US-WA,Bainbridge Island,98110
+192.69.184.0/22,US,US-WA,Bainbridge Island,98110
+199.36.252.0/22,US,US-WA,Bainbridge Island,98110
+204.238.8.0/24,US,US-WA,Bainbridge Island,98110
+208.87.163.0/24,US,US-WA,Bainbridge Island,98110
+2602:fec2::/32,US,US-WA,Bainbridge Island,98110
