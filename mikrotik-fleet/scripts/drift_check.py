@@ -56,6 +56,7 @@ def split_words(line):
     A word like comment="a b" is one word: double quotes keep spaces
     together, and inside quotes RouterOS escapes " and \\ with a backslash,
     so an escaped quote does not end the quoted span.
+    Verbose but avoids unreadable regex slop
     """
     words = []
     current = ""
