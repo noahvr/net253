@@ -69,6 +69,15 @@
 {% endfor %}
 /user set [find name=admin] disabled=yes comment="default account disabled; use break-glass for local recovery"
 
+# --- Drift collector: read-only user for the nightly export pull ---
+# Deliberately lacks write/policy/sensitive so a stolen collector key gets
+# an attacker /export, not /system reset-configuration. See scripts/drift_check.py.
+{% if drift_ro %}
+/user group add name=fleet-readonly policy=ssh,read
+/user add name={{ drift_ro.username }} group=fleet-readonly address={{ site.overlay.subnet }} disabled=no comment="nightly drift export pull only; key held by the collector host"
+/user ssh-keys import user={{ drift_ro.username }} public-key-file={{ drift_ro.ssh_public_key_file }}
+{% endif %}
+
 # --- Break-glass local admin (console/serial only, unique password per box) ---
 # password is a secret placeholder token; never a real value in this file.
 /user add name={{ site.break_glass.username }} group=full password="{{ site.break_glass.password }}" disabled=no comment="break-glass; existence and use are watched by the nightly drift diff"

@@ -60,6 +60,13 @@
 /user ssh-keys import user=noah public-key-file=noah.pub
 /user set [find name=admin] disabled=yes comment="default account disabled; use break-glass for local recovery"
 
+# --- Drift collector: read-only user for the nightly export pull ---
+# Deliberately lacks write/policy/sensitive so a stolen collector key gets
+# an attacker /export, not /system reset-configuration. See scripts/drift_check.py.
+/user group add name=fleet-readonly policy=ssh,read
+/user add name=drift-ro group=fleet-readonly address=10.99.0.0/24 disabled=no comment="nightly drift export pull only; key held by the collector host"
+/user ssh-keys import user=drift-ro public-key-file=drift-ro.pub
+
 # --- Break-glass local admin (console/serial only, unique password per box) ---
 # password is a secret placeholder token; never a real value in this file.
 /user add name=breakglass group=full password="{{SECRET:break_glass_password:site-a}}" disabled=no comment="break-glass; existence and use are watched by the nightly drift diff"

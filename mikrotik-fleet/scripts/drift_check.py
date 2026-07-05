@@ -53,18 +53,20 @@ SECRET_PARAM_RE = re.compile(
 SNMP_COMMUNITY_NAME_RE = re.compile(r'\s*name=(?:"[^"]*"|\S+)')
 
 
-def load_sites():
-    data = yaml.safe_load(SITES_FILE.read_text())
-    return data["sites"]
+def load_data():
+    return yaml.safe_load(SITES_FILE.read_text())
 
 
 def overlay_host(site):
     return site["overlay"]["address"].split("/")[0]
 
 
-def fetch_export(host):
+def fetch_export(host, user):
+    # Pulls as the dedicated read-only user (sites.yaml drift_ro), NOT the
+    # deploy credential -- a stolen collector key should get an attacker
+    # /export, not /system reset-configuration.
     result = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", f"admin@{host}", "/export"],
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", f"{user}@{host}", "/export"],
         capture_output=True, text=True, check=True,
     )
     return result.stdout
@@ -101,7 +103,7 @@ def commit_live_export(site_name, export_text, no_commit):
         git("commit", "-m", f"live export: {site_name} {stamp}")
 
 
-def check_site(site, no_commit):
+def check_site(site, ssh_user, no_commit):
     name = site["name"]
     host = overlay_host(site)
     rendered_path = RENDERED_DIR / f"{name}.rsc"
@@ -110,7 +112,7 @@ def check_site(site, no_commit):
         return True
 
     try:
-        export_text = fetch_export(host)
+        export_text = fetch_export(host, ssh_user)
     except subprocess.CalledProcessError as e:
         print(f"[{name}] ERROR: could not reach {host} for /export: {e.stderr}", file=sys.stderr)
         return False
@@ -136,7 +138,9 @@ def main():
     parser.add_argument("--no-commit", action="store_true", help="skip git commit, for local testing")
     args = parser.parse_args()
 
-    sites = load_sites()
+    data = load_data()
+    sites = data["sites"]
+    ssh_user = data.get("drift_ro", {}).get("username", "drift-ro")
     if args.site:
         sites = [s for s in sites if s["name"] == args.site]
         if not sites:
@@ -144,7 +148,7 @@ def main():
 
     clean = True
     for site in sites:
-        clean = check_site(site, args.no_commit) and clean
+        clean = check_site(site, ssh_user, args.no_commit) and clean
 
     if not clean:
         sys.exit(1)

@@ -30,7 +30,7 @@ REQUIRED_KEYS = (
 )
 
 
-def load_sites():
+def load_data():
     data = yaml.safe_load(SITES_FILE.read_text())
     sites = data["sites"]
     names = [s["name"] for s in sites]
@@ -40,12 +40,12 @@ def load_sites():
         missing = [k for k in REQUIRED_KEYS if k not in site]
         if missing:
             raise SystemExit(f"sites.yaml: site {site.get('name', '?')} missing required keys: {missing}")
-    return sites
+    return data
 
 
-def render_site(env, site):
+def render_site(env, site, drift_ro):
     template = env.get_template("router.rsc.j2")
-    return template.render(site=site)
+    return template.render(site=site, drift_ro=drift_ro)
 
 
 def main():
@@ -53,7 +53,9 @@ def main():
     check_mode = "--check" in args
     args = [a for a in args if a != "--check"]
 
-    sites = load_sites()
+    data = load_data()
+    sites = data["sites"]
+    drift_ro = data.get("drift_ro")
     if args:
         sites = [s for s in sites if s["name"] in args]
         if not sites:
@@ -69,7 +71,7 @@ def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     drift = []
     for site in sites:
-        rendered = render_site(env, site)
+        rendered = render_site(env, site, drift_ro)
         out_path = OUTPUT_DIR / f"{site['name']}.rsc"
         if check_mode:
             existing = out_path.read_text() if out_path.exists() else None

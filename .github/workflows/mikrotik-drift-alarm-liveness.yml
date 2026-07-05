@@ -1,0 +1,56 @@
+# Dead-man switch for the nightly drift check (mikrotik-fleet/scripts/drift_check.py).
+#
+# The drift alarm's failure mode is silence: if the collector host dies (or
+# a lone admin quietly stops its cron), no diff ever fires and everything
+# looks fine. This workflow runs on GitHub -- infrastructure neither admin
+# solely controls (docs/PLAN.md section 6) -- and FAILS if the newest
+# commit touching mikrotik-fleet/live/ exports is older than the threshold,
+# meaning the collector has stopped reporting.
+#
+# It stays quiet (skips with a notice) until the first real export lands in
+# live/, so it won't false-alarm during Phase 0-2 before the collector is
+# in service.
+
+name: mikrotik-fleet drift-alarm liveness
+
+on:
+  schedule:
+    # Daily at 14:00 UTC (~06:00-07:00 Pacific), after the nightly
+    # collector run should have committed.
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+
+jobs:
+  liveness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check live/ export freshness
+        run: |
+          set -euo pipefail
+          MAX_AGE_HOURS=26
+
+          # Exports may land on a dedicated 'live' branch or on the default
+          # branch, depending on how the collector's clone is set up.
+          REF=HEAD
+          if git show-ref --verify --quiet refs/remotes/origin/live; then
+            REF=origin/live
+          fi
+          echo "checking ref: $REF"
+
+          if ! git ls-tree -r --name-only "$REF" -- mikrotik-fleet/live/ | grep -q '\.rsc$'; then
+            echo "::notice::no exports in mikrotik-fleet/live/ yet -- drift collector not in service, skipping liveness check"
+            exit 0
+          fi
+
+          LAST=$(git log -1 --format=%ct "$REF" -- 'mikrotik-fleet/live/*.rsc' 'mikrotik-fleet/live/*/*.rsc')
+          NOW=$(date +%s)
+          AGE_HOURS=$(( (NOW - LAST) / 3600 ))
+          echo "newest live/ export commit is ${AGE_HOURS}h old (threshold ${MAX_AGE_HOURS}h)"
+
+          if [ "$AGE_HOURS" -gt "$MAX_AGE_HOURS" ]; then
+            echo "::error::drift collector has not committed an export in ${AGE_HOURS}h. The drift alarm is dark: check the collector host, its cron job, and its overlay/SSH access to the fleet. See mikrotik-fleet/live/README.md."
+            exit 1
+          fi

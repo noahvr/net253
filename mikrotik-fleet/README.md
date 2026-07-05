@@ -67,8 +67,11 @@ pip install -r requirements.txt
 4. Boot the render in the CHR lab (docs/lab-testing.md).
 5. `./deploy.py push <site> --push --i-have-oob-open`, then `./deploy.py arm
    <site>`, soak, `./deploy.py disarm <site>`.
-6. `scripts/drift_check.py` runs nightly and pages someone if live drifts
-   from rendered.
+6. `scripts/drift_check.py` runs nightly on the collector host, pulling
+   `/export` as the read-only `drift-ro` user, and pages someone if live
+   drifts from rendered. A scheduled GitHub Actions workflow
+   (`mikrotik-drift-alarm-liveness.yml`) watches the watcher: it fails if
+   the collector stops committing exports, so the alarm can't die silently.
 
 ## What this deliberately does not do
 

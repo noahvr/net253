@@ -8,6 +8,14 @@
 # this file is secret — secret values are references like "{{SECRET:...}}"
 # resolved at deploy time from secrets.yaml (see docs/secrets-setup.md).
 
+# Fleet-wide facts (not per-site). The drift collector's read-only user
+# exists on every router so scripts/drift_check.py can pull /export without
+# holding the full-access deploy credential. The collector's private key
+# lives only on the collector host; only the public key is committed.
+drift_ro:
+  username: drift-ro
+  ssh_public_key_file: drift-ro.pub
+
 sites:
   - name: site-a
     role: base

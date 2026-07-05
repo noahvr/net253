@@ -39,9 +39,12 @@ TMPFS_DIR = Path("/dev/shm/mikrotik-deploy")
 SECRET_TOKEN_RE = re.compile(r"\{\{SECRET:([a-zA-Z0-9_]+):([a-zA-Z0-9_-]+)\}\}")
 
 
+def load_data():
+    return yaml.safe_load(SITES_FILE.read_text())
+
+
 def load_site(name):
-    data = yaml.safe_load(SITES_FILE.read_text())
-    for site in data["sites"]:
+    for site in load_data()["sites"]:
         if site["name"] == name:
             return site
     raise SystemExit(f"no site named {name!r} in sites.yaml")
@@ -124,10 +127,14 @@ def cmd_push(args):
     print(f"scp {out_path} -> admin@{host}:{remote_file}")
     subprocess.run(["scp", str(out_path), f"admin@{host}:{remote_file}"], check=True)
 
-    for admin in site.get("admins", []):
-        keyfile = PUBKEYS_DIR / admin["ssh_public_key_file"]
-        print(f"scp {keyfile} -> admin@{host}:{admin['ssh_public_key_file']}")
-        subprocess.run(["scp", str(keyfile), f"admin@{host}:{admin['ssh_public_key_file']}"], check=True)
+    key_files = [a["ssh_public_key_file"] for a in site.get("admins", [])]
+    drift_ro = load_data().get("drift_ro")
+    if drift_ro:
+        key_files.append(drift_ro["ssh_public_key_file"])
+    for key_file in key_files:
+        keyfile = PUBKEYS_DIR / key_file
+        print(f"scp {keyfile} -> admin@{host}:{key_file}")
+        subprocess.run(["scp", str(keyfile), f"admin@{host}:{key_file}"], check=True)
 
     print(f"triggering reset-configuration on {host} -- router will reboot")
     ssh_run(host, f"/system reset-configuration run-after-reset={remote_file}", check=False)
