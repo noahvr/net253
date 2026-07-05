@@ -45,6 +45,8 @@ LIVE_DIR = ROOT / "live"
 SECRET_PARAM_RE = re.compile(
     r"""
     \s*                  # leading whitespace, removed along with the param
+    (?<![\w-])           # not a suffix of a longer parameter name
+                         #   (e.g. must not fire on the tail of "login-password=")
     (?:                  # the secret-bearing parameter names RouterOS uses:
         private-key
       | password
@@ -53,8 +55,12 @@ SECRET_PARAM_RE = re.compile(
     )
     =                    # parameter assignment
     (?:                  # the value being stripped, either:
-        "[^"]*"          #   a double-quoted string (may contain spaces), or
-      | \S+              #   a bare unquoted value (no spaces)
+        "                #   a double-quoted string, where RouterOS escapes
+        (?: [^"\\]       #     embedded quotes and backslashes as \" and \\,
+          | \\.          #     so an escaped char never ends the string
+        )*
+        "
+      | \S+              #   or a bare unquoted value (no spaces)
     )
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -66,10 +72,15 @@ SECRET_PARAM_RE = re.compile(
 SNMP_COMMUNITY_NAME_RE = re.compile(
     r"""
     \s*                  # leading whitespace, removed along with the param
+    (?<![\w-])           # not a suffix of a longer parameter name
     name=                # the community-string parameter on /snmp community
     (?:                  # the value being stripped, either:
-        "[^"]*"          #   a double-quoted string (may contain spaces), or
-      | \S+              #   a bare unquoted value (no spaces)
+        "                #   a double-quoted string, where RouterOS escapes
+        (?: [^"\\]       #     embedded quotes and backslashes as \" and \\,
+          | \\.          #     so an escaped char never ends the string
+        )*
+        "
+      | \S+              #   or a bare unquoted value (no spaces)
     )
     """,
     re.VERBOSE,
