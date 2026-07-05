@@ -1,0 +1,9 @@
+# Copy this to .sops.yaml at the repo root and list every current
+# engineer's age public key (from `age-keygen`, see docs/secrets-setup.md).
+# Public keys are not secret -- this file is meant to be committed.
+
+creation_rules:
+  - path_regex: secrets\.yaml$
+    age: >-
+      age1REPLACE_ME_WITH_NOAHS_PUBLIC_KEY,
+      age1REPLACE_ME_WITH_SECOND_ENGINEERS_PUBLIC_KEY
