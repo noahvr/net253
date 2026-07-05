@@ -43,14 +43,37 @@ LIVE_DIR = ROOT / "live"
 # sides before diffing -- not the whole line -- so the rest of the line
 # (interface names, other params on the same command) still gets compared.
 SECRET_PARAM_RE = re.compile(
-    r'\s*(?:private-key|password|shared-secret|preshared-key)=(?:"[^"]*"|\S+)',
-    re.IGNORECASE,
+    r"""
+    \s*                  # leading whitespace, removed along with the param
+    (?:                  # the secret-bearing parameter names RouterOS uses:
+        private-key
+      | password
+      | shared-secret
+      | preshared-key
+    )
+    =                    # parameter assignment
+    (?:                  # the value being stripped, either:
+        "[^"]*"          #   a double-quoted string (may contain spaces), or
+      | \S+              #   a bare unquoted value (no spaces)
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
 )
 
 # /snmp community's payload parameter is confusingly called "name=" -- strip
 # it only on that command, since "name=" is a legitimate non-secret
 # identifier everywhere else (e.g. `/interface bridge add name=bridge-lan`).
-SNMP_COMMUNITY_NAME_RE = re.compile(r'\s*name=(?:"[^"]*"|\S+)')
+SNMP_COMMUNITY_NAME_RE = re.compile(
+    r"""
+    \s*                  # leading whitespace, removed along with the param
+    name=                # the community-string parameter on /snmp community
+    (?:                  # the value being stripped, either:
+        "[^"]*"          #   a double-quoted string (may contain spaces), or
+      | \S+              #   a bare unquoted value (no spaces)
+    )
+    """,
+    re.VERBOSE,
+)
 
 
 def overlay_host(site):

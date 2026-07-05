@@ -38,7 +38,18 @@ SECRETS_FILE = ROOT / "secrets.yaml"
 PUBKEYS_DIR = ROOT / "pubkeys"
 TMPFS_DIR = Path("/dev/shm/mikrotik-deploy")
 
-SECRET_TOKEN_RE = re.compile(r"\{\{SECRET:([a-zA-Z0-9_]+):([a-zA-Z0-9_-]+)\}\}")
+# Matches the placeholder tokens render.py leaves in rendered/*.rsc,
+# e.g. {{SECRET:wg_privkey:site-a}} -> group 1 "wg_privkey", group 2 "site-a".
+SECRET_TOKEN_RE = re.compile(
+    r"""
+    \{\{SECRET:          # literal opener: {{SECRET:
+    ([a-zA-Z0-9_]+)      # group 1: category, a key under secrets.yaml's "secrets:"
+    :                    # separator
+    ([a-zA-Z0-9_-]+)     # group 2: site name (hyphens allowed, e.g. site-a)
+    \}\}                 # literal closer: }}
+    """,
+    re.VERBOSE,
+)
 
 
 def load_site(name):
