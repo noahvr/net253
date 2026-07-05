@@ -30,9 +30,21 @@ REQUIRED_KEYS = (
 )
 
 
+def deep_merge(defaults, override):
+    """Site over defaults: dicts merge recursively, lists/scalars replace."""
+    merged = dict(defaults)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_data():
     data = yaml.safe_load(SITES_FILE.read_text())
-    sites = data["sites"]
+    defaults = data.get("defaults", {})
+    sites = [deep_merge(defaults, site) for site in data["sites"]]
     names = [s["name"] for s in sites]
     if len(names) != len(set(names)):
         raise SystemExit(f"sites.yaml: duplicate site names in {names}")
@@ -40,6 +52,7 @@ def load_data():
         missing = [k for k in REQUIRED_KEYS if k not in site]
         if missing:
             raise SystemExit(f"sites.yaml: site {site.get('name', '?')} missing required keys: {missing}")
+    data["sites"] = sites
     return data
 
 

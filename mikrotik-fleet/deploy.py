@@ -30,17 +30,15 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).parent
-SITES_FILE = ROOT / "sites.yaml"
+sys.path.insert(0, str(ROOT))
+from render import load_data  # merged defaults+site view of sites.yaml
+
 RENDERED_DIR = ROOT / "rendered"
 SECRETS_FILE = ROOT / "secrets.yaml"
 PUBKEYS_DIR = ROOT / "pubkeys"
 TMPFS_DIR = Path("/dev/shm/mikrotik-deploy")
 
 SECRET_TOKEN_RE = re.compile(r"\{\{SECRET:([a-zA-Z0-9_]+):([a-zA-Z0-9_-]+)\}\}")
-
-
-def load_data():
-    return yaml.safe_load(SITES_FILE.read_text())
 
 
 def load_site(name):

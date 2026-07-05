@@ -1,11 +1,13 @@
-# Intent source of truth. Facts only — no logic. Keep each site under ~20 lines;
-# if a site grows past that, either it is genuinely special (say so with a comment)
-# or templates/router.rsc.j2 is under-factored (fix the template, not this file).
+# Intent source of truth. Facts only -- no logic. `defaults:` holds what the
+# whole fleet shares; each site lists ONLY its differences (docs/PLAN.md
+# section 3 step 9: differences only, ~20 lines/site). render.py deep-merges
+# site over defaults (dicts merge recursively, lists and scalars replace).
+# A site growing past ~20 lines is either genuinely special (say so with a
+# comment) or a sign the template/defaults are under-factored -- decide which.
 #
 # These two example sites are placeholders for the Phase 2 exercise in
-# docs/PLAN.md §10.5 ("sites.yaml with 2 sites -> render -> boot the CHR from it").
-# Replace names/addresses with real inventory once Phase 0 is done. Nothing in
-# this file is secret — secret values are references like "{{SECRET:...}}"
+# docs/PLAN.md section 10.5. Replace with real inventory once Phase 0 is done.
+# Nothing here is secret -- secret values are "{{SECRET:...}}" references
 # resolved at deploy time from secrets.yaml (see docs/secrets-setup.md).
 
 # Fleet-wide facts (not per-site). The drift collector's read-only user
@@ -16,113 +18,63 @@ drift_ro:
   username: drift-ro
   ssh_public_key_file: drift-ro.pub
 
+defaults:
+  role: base
+  routeros_version: "7.16"
+  wan:
+    interface: ether1
+    mode: dhcp          # or "static" with wan.address / wan.gateway set
+  ntp_servers:
+    - 10.99.0.1
+  snmp:
+    contact: "noc@example.invalid"
+  overlay:
+    interface: wg-mgmt
+    subnet: 10.99.0.0/24
+    listen_port: 51820
+    peer_public_key: "EXAMPLEPUBKEY_MGMT_HOST_REPLACE_ME="
+    peer_endpoint_host: mgmt.example.invalid
+    peer_endpoint_port: 51820
+    peer_allowed_ips: 10.99.0.0/24
+  admins:
+    - username: noah
+      ssh_public_key_file: noah.pub   # see pubkeys/, plaintext, not secret
+  break_glass:
+    username: breakglass
+  watchdog:
+    mgmt_probe_address: 10.99.0.1
+    max_down_minutes: 15
+    backup_name: last-known-good.backup
+
 sites:
   - name: site-a
-    role: base
     identity: mkt-site-a
-    routeros_version: "7.16"
-
-    wan:
-      interface: ether1
-      mode: dhcp          # or "static" with wan.address / wan.gateway set
-
-    lan_ports: [ether2, ether3, ether4]
-
     loopback: 10.253.0.1/32
-
+    lan_ports: [ether2, ether3, ether4]
     vlans:
-      - id: 10
-        name: mgmt
-        parent: bridge-lan
-        address: 10.253.10.1/24
-      - id: 20
-        name: users
-        address: 10.253.20.1/24
-        parent: bridge-lan
-
-    ntp_servers:
-      - 10.99.0.1
-
+      - {id: 10, name: mgmt, parent: bridge-lan, address: 10.253.10.1/24}
+      - {id: 20, name: users, parent: bridge-lan, address: 10.253.20.1/24}
+    overlay:
+      address: 10.99.0.2/24
+      private_key: "{{SECRET:wg_privkey:site-a}}"
     snmp:
-      contact: "noc@example.invalid"
       location: "site-a"
       community: "{{SECRET:snmp_community:site-a}}"
-
-    overlay:
-      interface: wg-mgmt
-      address: 10.99.0.2/24
-      subnet: 10.99.0.0/24
-      listen_port: 51820
-      private_key: "{{SECRET:wg_privkey:site-a}}"
-      peer_public_key: "EXAMPLEPUBKEY_MGMT_HOST_REPLACE_ME="
-      peer_endpoint_host: mgmt.example.invalid
-      peer_endpoint_port: 51820
-      peer_allowed_ips: 10.99.0.0/24
-
-    admins:
-      - username: noah
-        ssh_public_key_file: noah.pub   # see pubkeys/, plaintext, not secret
-
     break_glass:
-      username: breakglass
       password: "{{SECRET:break_glass_password:site-a}}"
 
-    watchdog:
-      mgmt_probe_address: 10.99.0.1
-      max_down_minutes: 15
-      backup_name: last-known-good.backup
-
   - name: site-b
-    role: base
     identity: mkt-site-b
-    routeros_version: "7.16"
-
-    wan:
-      interface: ether1
-      mode: dhcp
-
-    lan_ports: [ether2, ether3]
-
     loopback: 10.253.0.2/32
-
+    lan_ports: [ether2, ether3]
     vlans:
-      - id: 10
-        name: mgmt
-        parent: bridge-lan
-        address: 10.253.11.1/24
-      - id: 20
-        name: users
-        address: 10.253.21.1/24
-        parent: bridge-lan
-
-    ntp_servers:
-      - 10.99.0.1
-
+      - {id: 10, name: mgmt, parent: bridge-lan, address: 10.253.11.1/24}
+      - {id: 20, name: users, parent: bridge-lan, address: 10.253.21.1/24}
+    overlay:
+      address: 10.99.0.3/24
+      private_key: "{{SECRET:wg_privkey:site-b}}"
     snmp:
-      contact: "noc@example.invalid"
       location: "site-b"
       community: "{{SECRET:snmp_community:site-b}}"
-
-    overlay:
-      interface: wg-mgmt
-      address: 10.99.0.3/24
-      subnet: 10.99.0.0/24
-      listen_port: 51820
-      private_key: "{{SECRET:wg_privkey:site-b}}"
-      peer_public_key: "EXAMPLEPUBKEY_MGMT_HOST_REPLACE_ME="
-      peer_endpoint_host: mgmt.example.invalid
-      peer_endpoint_port: 51820
-      peer_allowed_ips: 10.99.0.0/24
-
-    admins:
-      - username: noah
-        ssh_public_key_file: noah.pub
-
     break_glass:
-      username: breakglass
       password: "{{SECRET:break_glass_password:site-b}}"
-
-    watchdog:
-      mgmt_probe_address: 10.99.0.1
-      max_down_minutes: 15
-      backup_name: last-known-good.backup

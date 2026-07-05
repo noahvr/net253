@@ -30,10 +30,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
 ROOT = Path(__file__).parent.parent
-SITES_FILE = ROOT / "sites.yaml"
+sys.path.insert(0, str(ROOT))
+from render import load_data  # merged defaults+site view of sites.yaml
+
 RENDERED_DIR = ROOT / "rendered"
 LIVE_DIR = ROOT / "live"
 
@@ -51,10 +51,6 @@ SECRET_PARAM_RE = re.compile(
 # it only on that command, since "name=" is a legitimate non-secret
 # identifier everywhere else (e.g. `/interface bridge add name=bridge-lan`).
 SNMP_COMMUNITY_NAME_RE = re.compile(r'\s*name=(?:"[^"]*"|\S+)')
-
-
-def load_data():
-    return yaml.safe_load(SITES_FILE.read_text())
 
 
 def overlay_host(site):
