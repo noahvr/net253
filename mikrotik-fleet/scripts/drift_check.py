@@ -24,7 +24,6 @@ Usage:
     ./scripts/drift_check.py --no-commit      skip git commit (for local testing)
 """
 import argparse
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -39,38 +38,63 @@ LIVE_DIR = ROOT / "live"
 
 # RouterOS omits these parameters' values from /export (sometimes the whole
 # parameter, sometimes just the value); rendered/ carries them as
-# placeholder tokens instead. Strip just the key=value token from both
+# placeholder tokens instead. Strip just the key=value word from both
 # sides before diffing -- not the whole line -- so the rest of the line
 # (interface names, other params on the same command) still gets compared.
+SECRET_PARAMS = {"private-key", "password", "shared-secret", "preshared-key"}
 
-# A quoted RouterOS value escapes embedded quotes/backslashes as \" and \\,
-# so an escaped character never terminates the string.
-_QUOTED_VALUE = r'"(?:[^"\\]|\\.)*"'
-# A bare (unquoted) value runs to the next whitespace.
-_BARE_VALUE = r"\S+"
-# Never match the tail of a longer parameter name: "password=" must not
-# fire inside "dont-require-keep-password=".
-_NOT_MID_NAME = r"(?<![\w-])"
+# /snmp community's payload parameter is confusingly called "name=" -- treat
+# it as secret only on that command, since "name=" is a legitimate
+# non-secret identifier everywhere else (e.g. `/interface bridge add
+# name=bridge-lan`).
+SNMP_COMMUNITY_SECRET_PARAMS = SECRET_PARAMS | {"name"}
 
 
-def _param_stripper(names, flags=0):
-    """Regex matching ` name=value` for any of the given parameter names."""
-    return re.compile(
-        rf"\s*{_NOT_MID_NAME}(?:{'|'.join(names)})=(?:{_QUOTED_VALUE}|{_BARE_VALUE})",
-        flags,
-    )
+def split_words(line):
+    """Split a RouterOS command line into whitespace-separated words.
+
+    A word like comment="a b" is one word: double quotes keep spaces
+    together, and inside quotes RouterOS escapes " and \\ with a backslash,
+    so an escaped quote does not end the quoted span.
+    """
+    words = []
+    current = ""
+    in_quotes = False
+    escape_next = False
+    for char in line:
+        if escape_next:
+            current += char
+            escape_next = False
+        elif in_quotes and char == "\\":
+            current += char
+            escape_next = True
+        elif char == '"':
+            current += char
+            in_quotes = not in_quotes
+        elif char.isspace() and not in_quotes:
+            if current:
+                words.append(current)
+                current = ""
+        else:
+            current += char
+    if current:
+        words.append(current)
+    return words
 
 
-# The secret-bearing parameter names RouterOS uses.
-SECRET_PARAM_RE = _param_stripper(
-    ["private-key", "password", "shared-secret", "preshared-key"],
-    re.IGNORECASE,
-)
+def strip_secret_params(line, secret_params):
+    """Drop every name=value word whose name is a secret parameter.
 
-# /snmp community's payload parameter is confusingly called "name=" -- strip
-# it only on that command, since "name=" is a legitimate non-secret
-# identifier everywhere else (e.g. `/interface bridge add name=bridge-lan`).
-SNMP_COMMUNITY_NAME_RE = _param_stripper(["name"])
+    Whole-word comparison, so "password=x" is dropped but a longer name
+    like "dont-require-keep-password=yes" is kept.
+    """
+    kept = []
+    for word in split_words(line):
+        name, is_assignment, _ = word.partition("=")
+        if is_assignment and name.lower() in secret_params:
+            continue
+        kept.append(word)
+    return " ".join(kept)
 
 
 def overlay_host(site):
@@ -91,12 +115,13 @@ def fetch_export(host, user):
 def normalize(text):
     lines = []
     for line in text.splitlines():
-        stripped = SECRET_PARAM_RE.sub("", line)
-        if stripped.lstrip().startswith("/snmp community"):
-            stripped = SNMP_COMMUNITY_NAME_RE.sub("", stripped)
-        stripped = stripped.strip()
-        if stripped:
-            lines.append(stripped)
+        if line.lstrip().startswith("/snmp community"):
+            secret_params = SNMP_COMMUNITY_SECRET_PARAMS
+        else:
+            secret_params = SECRET_PARAMS
+        cleaned = strip_secret_params(line, secret_params).strip()
+        if cleaned:
+            lines.append(cleaned)
     return "\n".join(lines)
 
 
