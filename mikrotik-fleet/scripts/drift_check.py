@@ -42,49 +42,35 @@ LIVE_DIR = ROOT / "live"
 # placeholder tokens instead. Strip just the key=value token from both
 # sides before diffing -- not the whole line -- so the rest of the line
 # (interface names, other params on the same command) still gets compared.
-SECRET_PARAM_RE = re.compile(
-    r"""
-    \s*                  # leading whitespace, removed along with the param
-    (?<![\w-])           # not a suffix of a longer parameter name
-                         #   (e.g. must not fire on the tail of "login-password=")
-    (?:                  # the secret-bearing parameter names RouterOS uses:
-        private-key
-      | password
-      | shared-secret
-      | preshared-key
+
+# A quoted RouterOS value escapes embedded quotes/backslashes as \" and \\,
+# so an escaped character never terminates the string.
+_QUOTED_VALUE = r'"(?:[^"\\]|\\.)*"'
+# A bare (unquoted) value runs to the next whitespace.
+_BARE_VALUE = r"\S+"
+# Never match the tail of a longer parameter name: "password=" must not
+# fire inside "dont-require-keep-password=".
+_NOT_MID_NAME = r"(?<![\w-])"
+
+
+def _param_stripper(names, flags=0):
+    """Regex matching ` name=value` for any of the given parameter names."""
+    return re.compile(
+        rf"\s*{_NOT_MID_NAME}(?:{'|'.join(names)})=(?:{_QUOTED_VALUE}|{_BARE_VALUE})",
+        flags,
     )
-    =                    # parameter assignment
-    (?:                  # the value being stripped, either:
-        "                #   a double-quoted string, where RouterOS escapes
-        (?: [^"\\]       #     embedded quotes and backslashes as \" and \\,
-          | \\.          #     so an escaped char never ends the string
-        )*
-        "
-      | \S+              #   or a bare unquoted value (no spaces)
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE,
+
+
+# The secret-bearing parameter names RouterOS uses.
+SECRET_PARAM_RE = _param_stripper(
+    ["private-key", "password", "shared-secret", "preshared-key"],
+    re.IGNORECASE,
 )
 
 # /snmp community's payload parameter is confusingly called "name=" -- strip
 # it only on that command, since "name=" is a legitimate non-secret
 # identifier everywhere else (e.g. `/interface bridge add name=bridge-lan`).
-SNMP_COMMUNITY_NAME_RE = re.compile(
-    r"""
-    \s*                  # leading whitespace, removed along with the param
-    (?<![\w-])           # not a suffix of a longer parameter name
-    name=                # the community-string parameter on /snmp community
-    (?:                  # the value being stripped, either:
-        "                #   a double-quoted string, where RouterOS escapes
-        (?: [^"\\]       #     embedded quotes and backslashes as \" and \\,
-          | \\.          #     so an escaped char never ends the string
-        )*
-        "
-      | \S+              #   or a bare unquoted value (no spaces)
-    )
-    """,
-    re.VERBOSE,
-)
+SNMP_COMMUNITY_NAME_RE = _param_stripper(["name"])
 
 
 def overlay_host(site):
