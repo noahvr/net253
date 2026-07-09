@@ -1,0 +1,110 @@
+# {{ site.identity }} -- rendered from templates/router.rsc.j2, do not hand-edit.
+# Managed by mikrotik-fleet. To change this router: edit sites.yaml or this
+# template, open a PR, review the rendered diff, then redeploy. Winbox/CLI
+# changes made directly on the box will be erased by the next deploy -- that
+# is intentional (see docs/PLAN.md section 2).
+#
+# Role: {{ site.role }}   RouterOS target: {{ site.routeros_version }}
+#
+# NOT YET LAB-VALIDATED. Boot this against a CHR in the lab before trusting
+# it against real hardware -- see docs/lab-testing.md. RouterOS command
+# syntax varies across 7.x point releases; confirm against site.routeros_version.
+
+/system identity set name="{{ site.identity }}"
+
+# --- Logging ---
+/system logging action set [find name=memory] disk-lines-per-file=1000
+/system logging add topics=info,warning,error,critical action=memory
+
+# --- NTP client (overlay-only; do not sync to public NTP over WAN) ---
+/system ntp client set enabled=yes
+{% for server in site.ntp_servers %}
+/system ntp client servers add address={{ server }}
+{% endfor %}
+
+# --- WAN ---
+{% if site.wan.mode == "dhcp" %}
+/ip dhcp-client add interface={{ site.wan.interface }} disabled=no add-default-route=yes
+{% else %}
+/ip address add address={{ site.wan.address }} interface={{ site.wan.interface }}
+/ip route add gateway={{ site.wan.gateway }}
+{% endif %}
+
+# --- LAN bridge + VLANs ---
+/interface bridge add name=bridge-lan
+{% for port in site.lan_ports %}
+/interface bridge port add bridge=bridge-lan interface={{ port }}
+{% endfor %}
+{% for vlan in site.vlans %}
+/interface vlan add name=vlan{{ vlan.id }}-{{ vlan.name }} vlan-id={{ vlan.id }} interface={{ vlan.parent }}
+/ip address add address={{ vlan.address }} interface=vlan{{ vlan.id }}-{{ vlan.name }}
+{% endfor %}
+
+# --- Loopback ---
+/interface bridge add name=lo comment="loopback, never bridged to a real port"
+/ip address add address={{ site.loopback }} interface=lo
+
+# --- SNMP ---
+/snmp set enabled=yes contact="{{ site.snmp.contact }}" location="{{ site.snmp.location }}"
+/snmp community set [find default=yes] name="{{ site.snmp.community }}" read-access=yes write-access=no
+
+# --- Management overlay (WireGuard) ---
+# private-key below is a secret placeholder token resolved by deploy.py at
+# deploy time -- see docs/secrets-setup.md. Never a real key in this file.
+/interface wireguard add name={{ site.overlay.interface }} listen-port={{ site.overlay.listen_port }} private-key="{{ site.overlay.private_key }}"
+/interface wireguard peers add interface={{ site.overlay.interface }} public-key="{{ site.overlay.peer_public_key }}" endpoint-address={{ site.overlay.peer_endpoint_host }} endpoint-port={{ site.overlay.peer_endpoint_port }} allowed-address={{ site.overlay.peer_allowed_ips }} persistent-keepalive=25s
+/ip address add address={{ site.overlay.address }} interface={{ site.overlay.interface }}
+
+# --- Service binding: management ONLY on the overlay, insecure services off ---
+/ip service disable telnet,ftp,www,api
+/ip service set ssh address={{ site.overlay.subnet }} disabled=no
+/ip service set winbox address={{ site.overlay.subnet }} disabled=no
+/ip service set api-ssl address={{ site.overlay.subnet }} disabled=no
+
+# --- Users: per-human, SSH key only ---
+/user group add name=fleet-admin policy=read,write,test,winbox,password,sniff,sensitive,api,rest-api
+{% for admin in site.admins %}
+/user add name={{ admin.username }} group=fleet-admin address={{ site.overlay.subnet }} disabled=no
+/user ssh-keys import user={{ admin.username }} public-key-file={{ admin.ssh_public_key_file }}
+{% endfor %}
+/user set [find name=admin] disabled=yes comment="default account disabled; use break-glass for local recovery"
+
+# --- Drift collector: read-only user for the nightly export pull ---
+# Deliberately lacks write/policy/sensitive so a stolen collector key gets
+# an attacker /export, not /system reset-configuration. See scripts/drift_check.py.
+{% if drift_ro %}
+/user group add name=fleet-readonly policy=ssh,read
+/user add name={{ drift_ro.username }} group=fleet-readonly address={{ site.overlay.subnet }} disabled=no comment="nightly drift export pull only; key held by the collector host"
+/user ssh-keys import user={{ drift_ro.username }} public-key-file={{ drift_ro.ssh_public_key_file }}
+{% endif %}
+
+# --- Break-glass local admin (console/serial only, unique password per box) ---
+# password is a secret placeholder token; never a real value in this file.
+/user add name={{ site.break_glass.username }} group=full password="{{ site.break_glass.password }}" disabled=no comment="break-glass; existence and use are watched by the nightly drift diff"
+
+# --- Firewall: default-drop input, management from overlay only ---
+/ip firewall filter
+add chain=input connection-state=established,related action=accept comment="allow established/related"
+add chain=input connection-state=invalid action=drop comment="drop invalid"
+add chain=input protocol=icmp action=accept comment="allow icmp"
+add chain=input in-interface={{ site.overlay.interface }} action=accept comment="allow mgmt overlay"
+add chain=input in-interface=lo action=accept comment="allow loopback"
+add chain=input action=drop comment="default drop -- management never on untrusted L2/L3"
+add chain=forward connection-state=established,related action=accept comment="allow established/related"
+add chain=forward connection-state=invalid action=drop comment="drop invalid"
+{% for vlan in site.vlans %}
+add chain=forward in-interface=vlan{{ vlan.id }}-{{ vlan.name }} out-interface={{ site.wan.interface }} action=accept comment="{{ vlan.name }} to WAN"
+{% endfor %}
+add chain=forward action=drop comment="default drop -- no inter-vlan or inbound-from-wan forwarding unless explicitly allowed above"
+
+# --- NAT ---
+/ip firewall nat add chain=srcnat out-interface={{ site.wan.interface }} action=masquerade comment="NAT to WAN"
+
+# --- Watchdog: revert to last-known-good if mgmt overlay is unreachable past
+#     the change-window threshold. The scheduler always runs, but the script
+#     is a no-op unless the $wdArmed global is set -- deploy.py arms it over
+#     SSH right after a deploy and disarms it once the human confirms success.
+#     See docs/PLAN.md section 3 step 5 and docs/rebuild.md.
+{% include "watchdog.rsc.j2" %}
+
+/system scheduler add name=mgmt-watchdog interval=1m disabled=no on-event="/system script run mgmt-watchdog-script"

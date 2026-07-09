@@ -1,0 +1,29 @@
+/system script add name=mgmt-watchdog-script owner=admin policy=read,write,test,sensitive source={
+:global wdArmed
+:global wdFailCount
+
+:if ([:typeof $wdArmed] = "nothing") do={ :set wdArmed false }
+:if ([:typeof $wdFailCount] = "nothing") do={ :set wdFailCount 0 }
+
+:if ($wdArmed = false) do={
+    :set wdFailCount 0
+} else={
+    :local probe "{{ site.watchdog.mgmt_probe_address }}"
+    :local maxDown {{ site.watchdog.max_down_minutes }}
+    :local backupName "{{ site.watchdog.backup_name }}"
+
+    :if ([/ping $probe count=3] = 0) do={
+        :set wdFailCount ($wdFailCount + 1)
+        :log warning ("watchdog: mgmt probe failed while armed, consecutive misses=" . $wdFailCount . "/" . $maxDown)
+        :if ($wdFailCount >= $maxDown) do={
+            :log error "watchdog: mgmt unreachable past threshold, restoring last-known-good backup and rebooting"
+            :set wdArmed false
+            :set wdFailCount 0
+            /system backup load name=$backupName dont-require-keep-password=yes
+        }
+    } else={
+        :if ($wdFailCount > 0) do={ :log info "watchdog: mgmt probe recovered, resetting counter" }
+        :set wdFailCount 0
+    }
+}
+}

@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+
+# Real secrets file is meant to be committed sops-encrypted -- but never a
+# decrypted local copy or scratch export.
+secrets.yaml.dec
+*.dec.yaml
+*.plain.yaml
+
+# Local age keys must never live in the repo checkout.
+keys.txt
