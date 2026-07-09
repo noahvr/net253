@@ -1,0 +1,14 @@
+if 
+(dst == 23.140.108.0/24) 
+{ 
+set bgp-communities 65000:64986;
+accept 
+} 
+if 
+(dst in Lumen-BGP6-Out) 
+{ 
+set bgp-communities 65000:64986;
+accept 
+} 
+else 
+{ reject }
