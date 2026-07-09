@@ -1,6 +1,6 @@
-peers:
-- name: net253
+self:
   asn: 396952
+peers:
 - name: lumen
   asn: 3356
   status: primary
@@ -9,6 +9,7 @@ peers:
   status: backup
 - name: cogent
   asn: 174
+  status: future
 announce4:
 - prefix: 23.140.108.0/24
   description: ipv6 transition block
@@ -31,6 +32,12 @@ announce4:
 - prefix: 199.36.252.0/22
   description: KPUD customers GPON
   announce-to: primary, backup
+- prefix: 199.36.252.0/23
+  description: KPUD customers GPON
+  announce-to: primary
+- prefix: 199.36.254.0/23
+  description: KPUD customers GPON
+  announce-to: primary
 - prefix: 204.238.8.0/24
   description: Phones, Helldyne, 750 locals
   announce-to: primary,backup
