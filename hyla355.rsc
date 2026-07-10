@@ -96,6 +96,18 @@ add address=208.87.163.221 comment=425-STE-200-InterPack mac-address=\
     70:A7:41:6C:C7:DB server=dhcp-Commercial
 add address=208.87.163.222 comment=435-STE-250-Banzai mac-address=\
     70:A7:41:7D:49:89 server=dhcp-Commercial
+/system script
+add dont-require-permissions=no name=backup-nightly-export owner=admin \
+    policy=ftp,read,write,policy,test,sensitive source="\r\
+    \n    /export file=\"nightly\"\r\
+    \n    :log info \"Nightly config export written: nightly.rsc\"\r\
+    \n"
+add dont-require-permissions=no name=backup-weekly-binary owner=admin policy=\
+    ftp,read,write,policy,test,sensitive source="\r\
+    \n    /system backup save name=\"weekly\" password=\"CHANGE-ME-STRONG-PASS\
+    WORD\"\r\
+    \n    :log info \"Weekly binary backup written: weekly.backup\"\r\
+    \n"
 /ip dhcp-server network
 add address=192.168.253.0/24 comment="MGMT VLAN4" dns-server=8.8.8.8,1.1.1.1 \
     gateway=192.168.253.1
@@ -139,6 +151,15 @@ set 0 disabled=yes
 add topics=info,!wireguard
 /system routerboard settings
 set enter-setup-on=delete-key
+/system scheduler
+add interval=1d name=sched-nightly-export on-event=\
+    "/system script run backup-nightly-export" policy=\
+    ftp,read,write,policy,test,sensitive start-date=2026-07-09 start-time=\
+    02:15:00
+add interval=1w name=sched-weekly-binary on-event=\
+    "/system script run backup-weekly-binary" policy=\
+    ftp,read,write,policy,test,sensitive start-date=2026-07-12 start-time=\
+    03:15:00
 /tool bandwidth-server
 set enabled=no
 /tool mac-server
