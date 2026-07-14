@@ -134,10 +134,10 @@ add action=drop chain=input comment="drop all other input"
 add comment="KPUD transport" dst-address=0.0.0.0/0 gateway=23.140.108.245
 /ip service
 set ftp disabled=yes
-set ssh address=192.168.253.0/24,10.254.0.0/24
+set ssh address=192.168.253.0/24,10.99.0.0/24
 set telnet disabled=yes
-set www disabled=yes
-set winbox address=192.168.253.0/24,10.254.0.0/24
+set www disabled=no
+set winbox address=192.168.253.0/24,10.99.0.0/24
 set api disabled=yes
 set api-ssl disabled=yes
 /ip ssh
