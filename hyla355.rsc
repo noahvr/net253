@@ -134,10 +134,10 @@ add action=drop chain=input comment="drop all other input"
 add comment="KPUD transport" dst-address=0.0.0.0/0 gateway=23.140.108.245
 /ip service
 set ftp disabled=yes
-set ssh address=192.168.253.0/24,10.99.0.0/24
+set ssh address=192.168.253.0/24,10.99.0.1/32
 set telnet disabled=yes
 set www disabled=no
-set winbox address=192.168.253.0/24,10.99.0.0/24
+set winbox address=192.168.253.0/24,10.99.0.1/32
 set api disabled=yes
 set api-ssl disabled=yes
 /ip ssh
@@ -151,11 +151,6 @@ set 0 disabled=yes
 add topics=info,!wireguard
 /system routerboard settings
 set enter-setup-on=delete-key
-/system scheduler
-add interval=1d name=sched-nightly-export on-event=\
-    "/system script run backup-nightly-export" policy=\
-    ftp,read,write,policy,test,sensitive start-date=2026-07-09 start-time=\
-    02:15:00
 add interval=1w name=sched-weekly-binary on-event=\
     "/system script run backup-weekly-binary" policy=\
     ftp,read,write,policy,test,sensitive start-date=2026-07-12 start-time=\
