@@ -1,0 +1,12 @@
+#blanket Lumen out filter
+if (
+dst == 2602:fec2::/32 ||
+dst == 2602:fec2:5300::/40
+) 
+{ 
+set bgp-communities 65000:64986;
+set bgp-communities 65000:64990;
+accept 
+} 
+else 
+{ reject }
