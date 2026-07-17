@@ -1,5 +1,6 @@
 # Net253
 misc Net253 things.
+Router exports have secrets redacted by default
 
 .rsc export do not contain secrets
 user (name,pass,keys), wg private keys, all need to be added 
