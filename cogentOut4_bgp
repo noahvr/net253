@@ -1,0 +1,15 @@
+#blanket Cogent out filter
+if (
+dst == 23.140.108.0/24 ||  
+dst == 192.69.184.0/22 ||
+dst == 199.36.252.0/22 ||
+dst == 204.238.8.0/24 ||
+dst == 208.87.163.0/24 
+) 
+{ 
+set bgp-communities 65000:64986;
+set bgp-communities 65000:64990;
+accept 
+} 
+else 
+{ reject }

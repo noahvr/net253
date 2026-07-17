@@ -1,0 +1,9 @@
+#blanket Cogent out filter
+if (
+dst == 2602:fec2::/32
+) 
+{ 
+accept 
+} 
+else 
+{ reject }
