@@ -14,6 +14,7 @@ dst == 208.87.163.0/24
 ) 
 { 
 set bgp-communities 65000:64986;
+set bgp-communities 65000:64990;
 accept 
 } 
 else 
