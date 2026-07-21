@@ -1,4 +1,4 @@
-# Net253, LLC geofeed
+# Net253 LLC geofeed
 # Format: prefix, ISO 3166-1 country, ISO 3166-2 region, city, postal code
 # Reference: RFC 8805
 23.140.108.0/24,US,US-WA,Bainbridge Island,98110
