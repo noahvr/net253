@@ -1,0 +1,499 @@
+! ============================================================================
+! Arista DCS-7020SR-24C2 (24x10G SFP+, 2x100G QSFP28, 1x Mgmt)
+! Translated from RouterOS 7.21.5  CCR2216 (mt-HDH08KBE3K3)  AS396952
+! REV 3 changes:
+!   - Port-Channel2 removed; Et25/1 is a plain 40G trunk
+! REV 2 changes:
+!   - DHCPv4 by RELAY to the MikroTik over dedicated P2P 10.200.0.0/30 (Et4)
+!     (native EOS dhcp server removed; MT keeps pools + ~70 reservations)
+!   - hardware subinterface counters enabled (Jericho counts nothing on
+!     subifs by default - LibreNMS graphs would flatline)
+!   - Et4 repurposed from "reserved old-router link" to the relay P2P
+! Port plan:
+!   Et1-Et2        -> Port-Channel1  (2x10G LACP, L2 agg trunk)
+!   Et25/1 @ 40G   -> plain L2 trunk (40G agg, no LACP)
+!   Et26/1         -> L3 subinterfaces (Lumen tail + all non-agg VLANs)
+!   Et4            -> P2P to MikroTik 10.200.0.1/30 (DHCP relay + MT default)
+!   Management1    -> mgmt 10.253.0.11/24 (was ether1.66 tagged - see notes)
+!   Et3            -> reserved: VRRP link (was sfp28-2, no VRRP cfg existed)
+! Agg (L2) VLANs: 43, 287, 837, 838, 839, 840, 841 - rapid-pvst
+!
+! CUTOVER DEPENDENCIES (not in this file):
+!   - MikroTik: 10.200.0.2/30, servers rebound to dummy bridge with
+!     relay=<SVI IP> and server-address=10.200.0.2, default route -> 10.200.0.1
+!   - DHCPv6-PD does NOT survive cutover; resi PD is down until the
+!     external DHCPv6 (Kea) ticket lands. SLAAC on the /64s still works.
+! ============================================================================
+!
+service routing protocols model multi-agent
+!
+hostname mt-HDH08KBE3K3
+!
+clock timezone America/Los_Angeles
+!
+ip name-server 1.0.0.1
+ip name-server 8.8.8.8
+ip name-server 2606:4700:4700::1111
+ip name-server 2001:4860:4860::8888
+!
+ntp server time.cloudflare.com
+ntp server pool.ntp.org
+!
+spanning-tree mode rapid-pvst
+!
+ip routing
+ipv6 unicast-routing
+!
+! Jericho does not count subinterface traffic in hardware by default.
+! Without these, every Et26/1.x graph in LibreNMS reads zero.
+hardware counter feature subinterface in
+hardware counter feature subinterface out
+! NOTE: per-SVI (Vlan837-841 etc.) hardware counters are EOS-version
+! dependent on this platform - run `show hardware counter feature` and
+! enable the vlan-interface option if your train has it. If not, per-VLAN
+! resi visibility comes from the IPFIX flow tracker below, not SNMP.
+!
+! ---------------------------------------------------------------------------
+! VLANs (L2 agg only - everything else is a routed subinterface on Et26)
+! ---------------------------------------------------------------------------
+vlan 43
+   name KPUD-DIA-KID340
+vlan 287
+   name NoaNet-Tail
+vlan 837
+   name Resi-837-AE
+vlan 838
+   name Transport-Walk
+vlan 839
+   name Resi-839
+vlan 840
+   name Resi-840
+vlan 841
+   name Resi-841
+!
+! ---------------------------------------------------------------------------
+! Management
+! NOTE: RouterOS had this TAGGED as vlan66 on ether1. Management1 cannot tag;
+! the upstream switchport feeding Management1 must be an access port in
+! VLAN 66. If that is not possible, delete this and create SVI Vlan66 on one
+! of the trunks instead.
+! ---------------------------------------------------------------------------
+interface Management1
+   description mgmt66 (10.253.0.0/24)
+   ip address 10.253.0.11/24
+!
+! ---------------------------------------------------------------------------
+! Aggregation trunks - same L2, rapid-pvst
+! ---------------------------------------------------------------------------
+interface Port-Channel1
+   description AGG 2x10G LAG
+   switchport mode trunk
+   switchport trunk allowed vlan 43,287,837-841
+!
+interface Ethernet1
+   description AGG LAG member 1
+   channel-group 1 mode active
+!
+interface Ethernet2
+   description AGG LAG member 2
+   channel-group 1 mode active
+!
+! Plain trunk, no port-channel wrapper (far end is not LACP). Trade-off:
+! no LACP miscable protection - a wrong cable into this port bridges
+! straight into the resi STP domain instead of staying down.
+interface Ethernet25/1
+   description AGG 40G trunk (100G port forced to 40G)
+   speed forced 40gfull
+   switchport mode trunk
+   switchport trunk allowed vlan 43,287,837-841
+!
+interface Ethernet3
+   description RESERVED: VRRP LINK (was sfp28-2 - no VRRP config existed)
+   shutdown
+!
+! ---------------------------------------------------------------------------
+! P2P to demoted MikroTik - DHCP relay target (was sfp28-11 on the MT side)
+! MT holds 10.200.0.2/30 and defaults back through 10.200.0.1.
+! Clients unicast RENEWs directly to 10.200.0.2 via their SVI gateway -
+! never ACL udp/67 between resi VLANs and this /30 or renewals break
+! while broadcasts still work.
+! ---------------------------------------------------------------------------
+interface Ethernet4
+   description P2P MikroTik DHCP relay (10.200.0.0/30)
+   no switchport
+   ip address 10.200.0.1/30
+!
+! ---------------------------------------------------------------------------
+! L3 100G port - Lumen tail + all non-agg VLANs as routed subinterfaces
+! ---------------------------------------------------------------------------
+interface Ethernet26/1
+   description L3 trunk - Lumen tail + service VLANs
+   no switchport
+!
+interface Ethernet26/1.3356
+   description Lumen Tail (BGP peering)
+   encapsulation dot1q vlan 3356
+   ip address 4.79.108.134/30
+   ipv6 address 2001:1900:2100:32::862/126
+!
+interface Ethernet26/1.100
+   description OldRouter reused for DNS/revDNS
+   encapsulation dot1q vlan 100
+   ip address 23.140.108.249/30
+!
+interface Ethernet26/1.253
+   description Netflow (no L3 addr in source config)
+   encapsulation dot1q vlan 253
+!
+interface Ethernet26/1.469
+   description Haselwood Auto Group
+   encapsulation dot1q vlan 469
+   ip address 208.87.163.237/30
+   ipv6 address 2602:fec2:5300:469::1/64
+!
+interface Ethernet26/1.750
+   description helldyne
+   encapsulation dot1q vlan 750
+   ip address 204.238.8.1/28
+   ipv6 address 2602:fec2:5300:750::1/64
+!
+interface Ethernet26/1.1666
+   description Speedtest Gateway
+   encapsulation dot1q vlan 1666
+   ip address 23.140.108.253/30
+!
+interface Ethernet26/1.1750
+   description 750 tenants
+   encapsulation dot1q vlan 1750
+   ip address 204.238.8.17/29
+!
+interface Ethernet26/1.1839
+   description Upper 204 block at 750
+   encapsulation dot1q vlan 1839
+   ip address 204.238.8.129/25
+   ip helper-address 10.200.0.2
+!
+interface Ethernet26/1.2750
+   description 730 WCG Vet Gateway
+   encapsulation dot1q vlan 2750
+   ip address 204.238.8.33/27
+   ip helper-address 10.200.0.2
+!
+interface Ethernet26/1.2752
+   description WISP block
+   encapsulation dot1q vlan 2752
+   ip address 204.238.8.97/27
+   ip helper-address 10.200.0.2
+!
+interface Ethernet26/1.2754
+   description 750 Device Router
+   encapsulation dot1q vlan 2754
+   ip address 23.140.108.241/30
+!
+interface Ethernet26/1.4060
+   description GPON near 750
+   encapsulation dot1q vlan 4060
+   ip address 204.238.8.65/27
+   ip helper-address 10.200.0.2
+!
+interface Ethernet26/1.50
+   description DISABLED in source (vlan50)
+   encapsulation dot1q vlan 50
+   shutdown
+!
+interface Ethernet26/1.2751
+   description DISABLED in source (admingear 100.64.1.254/24)
+   encapsulation dot1q vlan 2751
+   shutdown
+!
+! ---------------------------------------------------------------------------
+! SVIs for agg VLANs (L2 on the trunks, L3 terminated here)
+! NOTE: RouterOS used EUI-64 v6 gateway addresses. EOS does not do EUI-64
+! interface addressing; ::1/64 gateways used instead. Update RAs/docs.
+! ---------------------------------------------------------------------------
+interface Vlan43
+   description KPUD DIA KID340
+   ip address 64.146.144.34/30
+!
+interface Vlan287
+   description NoaNet Tail (BGP peering)
+   ip address 66.119.206.14/30
+   ipv6 address 2001:5e0:d::4a/126
+!
+interface Vlan837
+   description Resi 837 AE (192.69.184.0/23)
+   ip address 192.69.184.1/23
+   ip helper-address 10.200.0.2
+   ipv6 address 2602:fec2:5300:5::1/64
+   ipv6 nd other-config-flag
+   ipv6 nd router-preference high
+!
+interface Vlan838
+   description transport walk
+   ip address 23.140.108.245/30
+!
+interface Vlan839
+   description Resi 839 (199.36.252.0/23)
+   ip address 199.36.252.1/23
+   ip helper-address 10.200.0.2
+   ipv6 address 2602:fec2:5300:2::1/64
+   ipv6 nd other-config-flag
+   ipv6 nd router-preference high
+!
+interface Vlan840
+   description Resi 840 (199.36.254.0/23)
+   ip address 199.36.254.1/23
+   ip helper-address 10.200.0.2
+   ipv6 address 2602:fec2:5300:3::1/64
+   ipv6 nd other-config-flag
+   ipv6 nd router-preference high
+!
+interface Vlan841
+   description Resi 841 (192.69.186.0/23)
+   ip address 192.69.186.1/23
+   ip helper-address 10.200.0.2
+   ipv6 address 2602:fec2:5300:4::1/64
+   ipv6 nd other-config-flag
+   ipv6 nd router-preference high
+!
+interface Loopback0
+   description cymru BGP source (inert until GO-LIVE)
+   ip address 23.140.108.3/32
+!
+! ---------------------------------------------------------------------------
+! Static routes (deduplicated - source had the blackhole block twice)
+! ---------------------------------------------------------------------------
+ip route 0.0.0.0/0 4.79.108.133 30
+! mgmt fallback default - only used if BGP and Lumen static are gone
+ip route 0.0.0.0/0 10.253.0.1 100
+ip route 10.0.0.10/32 10.253.0.10
+! Helldyne / Byron / mgmt-side networks
+ip route 172.29.1.0/24 10.253.0.1
+ip route 172.28.64.0/22 10.253.0.1 2
+ip route 172.29.3.0/24 10.253.0.1
+ip route 172.29.3.0/27 10.253.0.1
+ip route 192.168.15.118/32 10.253.0.1
+! KPUD-side
+ip route 170.39.183.0/24 64.146.144.33 100
+ip route 64.184.146.0/24 64.146.144.33 10
+! 355 / vlan838 side
+ip route 208.87.163.240/28 23.140.108.246 100
+ip route 208.87.163.64/26 23.140.108.246 100
+ip route 208.87.163.128/26 23.140.108.246 100
+ip route 208.87.163.192/27 23.140.108.246 1
+! Old router - NOTE: 23.140.108.2 is not on any connected subnet here;
+! this route was already non-functional on the MikroTik. Delete once
+! the old box's role is confirmed dead.
+ip route 208.87.163.0/24 23.140.108.2 240
+! Aggregate blackholes (anchor BGP announcements)
+ip route 23.140.108.0/24 Null0 250
+ip route 192.69.184.0/22 Null0 250
+ip route 192.69.184.0/23 Null0 250
+ip route 192.69.186.0/23 Null0 250
+ip route 199.36.252.0/22 Null0 250
+ip route 199.36.252.0/23 Null0 250
+ip route 199.36.254.0/23 Null0 250
+ip route 204.238.8.0/24 Null0 250
+ip route 208.87.163.0/24 Null0 250
+ip route 142.248.72.0/22 Null0 250
+ip route 142.248.74.0/23 Null0 250
+ip route 142.248.74.0/24 Null0 250
+ip route 142.248.75.0/24 Null0 250
+!
+ipv6 route ::/0 2001:1900:2100:32::861 30
+ipv6 route ::/0 2001:5e0:d::49 250
+ipv6 route 2602:fec2::/32 Null0 250
+ipv6 route 2602:fec2:5300::/40 Null0 250
+ipv6 route 2602:fec2:fff0::/48 Null0 250
+!
+! ---------------------------------------------------------------------------
+! BGP policy
+!   Intent: prefer default (and everything) via Lumen; NoaNet is backup.
+!   LP 200 in from Lumen, 4x prepend out to NoaNet.
+!   (The old router's LP/weight chains were orphaned and never attached.)
+! ---------------------------------------------------------------------------
+ip prefix-list PL-V4-LE24 seq 10 permit 0.0.0.0/0 le 24
+!
+ip prefix-list PL-LUMEN-OUT-V4 seq 10 permit 23.140.108.0/24
+ip prefix-list PL-LUMEN-OUT-V4 seq 20 permit 192.69.184.0/22
+ip prefix-list PL-LUMEN-OUT-V4 seq 30 permit 208.87.163.0/24
+ip prefix-list PL-LUMEN-OUT-V4 seq 40 permit 199.36.252.0/22
+ip prefix-list PL-LUMEN-OUT-V4 seq 50 permit 204.238.8.0/24
+! more-specifics steered to Lumen (fixes the corrupted 192.69.184.0/23 entry)
+ip prefix-list PL-LUMEN-OUT-V4 seq 60 permit 199.36.252.0/23
+ip prefix-list PL-LUMEN-OUT-V4 seq 70 permit 199.36.254.0/23
+ip prefix-list PL-LUMEN-OUT-V4 seq 80 permit 192.69.184.0/23
+ip prefix-list PL-LUMEN-OUT-V4 seq 90 permit 192.69.186.0/23
+!
+ip prefix-list PL-NOANET-OUT-V4 seq 10 permit 204.238.8.0/24
+ip prefix-list PL-NOANET-OUT-V4 seq 20 permit 208.87.163.0/24
+ip prefix-list PL-NOANET-OUT-V4 seq 30 permit 199.36.252.0/22
+ip prefix-list PL-NOANET-OUT-V4 seq 40 permit 23.140.108.0/24
+ip prefix-list PL-NOANET-OUT-V4 seq 50 permit 192.69.184.0/22
+!
+ipv6 prefix-list PL-V6-LE48 seq 10 permit ::/0 le 48
+ipv6 prefix-list PL-LUMEN-OUT-V6 seq 10 permit 2602:fec2::/32
+ipv6 prefix-list PL-LUMEN-OUT-V6 seq 20 permit 2602:fec2:5300::/40
+ipv6 prefix-list PL-NOANET-OUT-V6 seq 10 permit 2602:fec2::/32
+!
+route-map RM-LUMEN-IN-V4 permit 10
+   match ip address prefix-list PL-V4-LE24
+   set local-preference 200
+!
+route-map RM-LUMEN-IN-V6 permit 10
+   match ipv6 address prefix-list PL-V6-LE48
+   set local-preference 200
+!
+route-map RM-NOANET-IN-V4 permit 10
+   match ip address prefix-list PL-V4-LE24
+   set local-preference 100
+!
+route-map RM-NOANET-IN-V6 permit 10
+   match ipv6 address prefix-list PL-V6-LE48
+   set local-preference 100
+!
+route-map RM-LUMEN-OUT-V4 permit 10
+   match ip address prefix-list PL-LUMEN-OUT-V4
+!
+route-map RM-LUMEN-OUT-V6 permit 10
+   match ipv6 address prefix-list PL-LUMEN-OUT-V6
+   set community 65000:64986
+!
+route-map RM-NOANET-OUT-V4 permit 10
+   match ip address prefix-list PL-NOANET-OUT-V4
+   set as-path prepend 396952 396952 396952 396952
+!
+route-map RM-NOANET-OUT-V6 permit 10
+   match ipv6 address prefix-list PL-NOANET-OUT-V6
+   set as-path prepend 396952 396952 396952 396952
+!
+route-map RM-REJECT deny 10
+!
+router bgp 396952
+   router-id 10.0.0.11
+   ! eBGP admin distance 20 so learned defaults beat the static fallbacks
+   distance bgp 20 200 200
+   no bgp default ipv4-unicast
+   !
+   ! Lumen (AS 3356 assumed from vlan-id - VERIFY on your LOA/turn-up doc)
+   neighbor 4.79.108.133 remote-as 3356
+   neighbor 4.79.108.133 description Lumen BGP4 1000 Denny
+   neighbor 4.79.108.133 bfd
+   neighbor 4.79.108.133 maximum-routes 0
+   neighbor 2001:1900:2100:32::861 remote-as 3356
+   neighbor 2001:1900:2100:32::861 description Lumen BGP6 1000 Denny
+   neighbor 2001:1900:2100:32::861 bfd
+   neighbor 2001:1900:2100:32::861 maximum-routes 0
+   !
+   ! NoaNet (AS 16713) - BFD was disabled on the v4 session in source
+   neighbor 66.119.206.13 remote-as 16713
+   neighbor 66.119.206.13 description NoaNet BGP4 Westin
+   neighbor 66.119.206.13 maximum-routes 0
+   neighbor 2001:5e0:d::49 remote-as 16713
+   neighbor 2001:5e0:d::49 description NoaNet BGP6 Westin
+   neighbor 2001:5e0:d::49 maximum-routes 0
+   !
+   ! SPARE peers - disabled in source, enable at GO-LIVE
+   neighbor 216.31.3.81 remote-as 65332
+   neighbor 216.31.3.81 description cymru bogon (SPARE)
+   neighbor 216.31.3.81 update-source Loopback0
+   neighbor 216.31.3.81 ebgp-multihop
+   neighbor 216.31.3.81 shutdown
+   neighbor 216.31.7.81 remote-as 65332
+   neighbor 216.31.7.81 description cymru full-bogon (SPARE)
+   neighbor 216.31.7.81 update-source Loopback0
+   neighbor 216.31.7.81 ebgp-multihop
+   neighbor 216.31.7.81 shutdown
+   neighbor 10.253.0.118 remote-as 396952
+   neighbor 10.253.0.118 description goBGP collector (SPARE)
+   neighbor 10.253.0.118 shutdown
+   !
+   address-family ipv4
+      neighbor 4.79.108.133 activate
+      neighbor 4.79.108.133 route-map RM-LUMEN-IN-V4 in
+      neighbor 4.79.108.133 route-map RM-LUMEN-OUT-V4 out
+      neighbor 66.119.206.13 activate
+      neighbor 66.119.206.13 route-map RM-NOANET-IN-V4 in
+      neighbor 66.119.206.13 route-map RM-NOANET-OUT-V4 out
+      neighbor 216.31.3.81 activate
+      neighbor 216.31.3.81 route-map RM-REJECT in
+      neighbor 216.31.3.81 route-map RM-REJECT out
+      neighbor 216.31.7.81 activate
+      neighbor 216.31.7.81 route-map RM-REJECT in
+      neighbor 216.31.7.81 route-map RM-REJECT out
+      network 23.140.108.0/24
+      network 192.69.184.0/22
+      network 192.69.184.0/23
+      network 192.69.186.0/23
+      network 199.36.252.0/22
+      network 199.36.252.0/23
+      network 199.36.254.0/23
+      network 204.238.8.0/24
+      network 208.87.163.0/24
+   !
+   address-family ipv6
+      neighbor 2001:1900:2100:32::861 activate
+      neighbor 2001:1900:2100:32::861 route-map RM-LUMEN-IN-V6 in
+      neighbor 2001:1900:2100:32::861 route-map RM-LUMEN-OUT-V6 out
+      neighbor 2001:5e0:d::49 activate
+      neighbor 2001:5e0:d::49 route-map RM-NOANET-IN-V6 in
+      neighbor 2001:5e0:d::49 route-map RM-NOANET-OUT-V6 out
+      network 2602:fec2::/32
+      network 2602:fec2:5300::/40
+!
+! BFD timers (RouterOS used 500ms/500ms with Lumen)
+bfd
+   interval 500 min-rx 500 multiplier 3 default
+!
+! ---------------------------------------------------------------------------
+! Flow export - IPFIX to 10.253.0.118:4739 (matches old ip traffic-flow).
+! Also the per-VLAN visibility backstop if SVI hardware counters are
+! unsupported on your EOS train.
+! ---------------------------------------------------------------------------
+flow tracking hardware
+   tracker T1
+      exporter IPFIX
+         collector 10.253.0.118 port 4739
+         local interface Management1
+         template interval 60000
+   no shutdown
+!
+! sFlow fallback:
+! sflow sample 1000
+! sflow destination 10.253.0.118
+! sflow source-interface Management1
+! sflow run
+!
+! ---------------------------------------------------------------------------
+! Management plane
+! WireGuard mgmt tunnel (10.99.0.4, hub 45.76.240.11) DOES NOT EXIST on EOS.
+! ACLs below preserve the old source restrictions but 10.99.0.0/16 is only
+! reachable if you re-home the tunnel (edge WG concentrator or similar).
+! LibreNMS polling depends on this path too.
+! ---------------------------------------------------------------------------
+ip access-list standard MGMT-SSH
+   permit 10.99.0.0/16
+   permit 192.168.88.0/24
+   permit 10.253.0.0/24
+!
+management ssh
+   ip access-group MGMT-SSH in
+   idle-timeout 60
+!
+! RADIUS login (was via wg-mgmt to 10.99.0.1 - fix reachability first)
+radius-server host 10.99.0.1 key <RADIUS-SECRET-FROM-ENROLL-SCRIPT>
+aaa group server radius MGMT-RADIUS
+   server 10.99.0.1
+aaa authentication login default group MGMT-RADIUS local
+aaa accounting exec default start-stop group MGMT-RADIUS
+!
+! Local fallback user - SET A PASSWORD before deploying
+username admin privilege 15 role network-admin secret <SET-ME>
+!
+! SNMP - librenms community used SHA1/AES on RouterOS => SNMPv3 user on EOS.
+! Credentials were pushed by the enroll script; re-provision manually.
+snmp-server community net253snmp ro
+snmp-server user librenms LIBRENMS v3 auth sha <AUTH-PASS> priv aes <PRIV-PASS>
+snmp-server group LIBRENMS v3 priv
+!
+end
