@@ -1,0 +1,96 @@
+# INTERNET INGRESS
+# Apply to transit / peer facing ports (Lumen, Cogent, NoaNet, etc.)
+# Direction: inbound toward AS396952
+#
+# Intent: drop traffic that is deterministically and absolutely maligned
+# or improper per standard internet best practices (BCP38 / martians /
+# spoofed own-space). Do not use this list for "suspicious but maybe
+# legit" filtering — only hard-wrong packets.
+
+# ---------------------------------------------------------------------------
+# DROPLISTS (sample / starter sets)
+# ---------------------------------------------------------------------------
+
+# Sources that must never appear on the public Internet
+DROP_SRC_MARTIANS_V4 =
+  0.0.0.0/8 ||
+  10.0.0.0/8 ||
+  127.0.0.0/8 ||
+  169.254.0.0/16 ||
+  172.16.0.0/12 ||
+  192.0.2.0/24 ||
+  192.168.0.0/16 ||
+  198.18.0.0/15 ||
+  198.51.100.0/24 ||
+  203.0.113.0/24 ||
+  224.0.0.0/4 ||
+  240.0.0.0/4 ||
+  255.255.255.255/32
+
+# Destinations that are nonsense from the Internet toward us
+DROP_DST_MARTIANS_V4 =
+  0.0.0.0/8 ||
+  127.0.0.0/8 ||
+  169.254.0.0/16 ||
+  224.0.0.0/4 ||
+  255.255.255.255/32
+
+# Our own space as SOURCE from the Internet = spoof (BCP38)
+# Keep in sync with announced / owned v4 (bgp/net253_bgp.yml)
+DROP_SRC_OURSPACE_V4 =
+  23.140.108.0/24 ||
+  142.248.74.0/24 ||
+  142.248.75.0/24 ||
+  192.69.184.0/22 ||
+  199.36.252.0/22 ||
+  204.238.8.0/24 ||
+  208.87.163.0/24
+
+DROP_SRC_MARTIANS_V6 =
+  ::/128 ||
+  ::1/128 ||
+  ::ffff:0:0/96 ||
+  64:ff9b::/96 ||
+  100::/64 ||
+  2001:db8::/32 ||
+  fc00::/7 ||
+  fe80::/10 ||
+  ff00::/8
+
+DROP_DST_MARTIANS_V6 =
+  ::/128 ||
+  ::1/128 ||
+  fe80::/10 ||
+  ff00::/8
+
+DROP_SRC_OURSPACE_V6 =
+  2602:fec2::/32
+
+# ---------------------------------------------------------------------------
+# POLICY (pseudocode)
+# ---------------------------------------------------------------------------
+
+apply to INTERNET_INGRESS ports
+
+# 1) Martian / bogon sources
+if (src in DROP_SRC_MARTIANS_V4 || src in DROP_SRC_MARTIANS_V6)
+  drop comment="martian/bogon source"
+
+# 2) Martian destinations (not us, not routable)
+if (dst in DROP_DST_MARTIANS_V4 || dst in DROP_DST_MARTIANS_V6)
+  drop comment="martian destination"
+
+# 3) Spoofed packets claiming to be from our own prefixes
+if (src in DROP_SRC_OURSPACE_V4 || src in DROP_SRC_OURSPACE_V6)
+  drop comment="spoofed own-space source (BCP38)"
+
+# 4) Land / reflection nonsense
+if (src == dst)
+  drop comment="land: source equals destination"
+
+# 5) Packets with no usable L3 identity
+if (src == 0.0.0.0/32 || src == ::/128)
+  drop comment="unspecified source"
+
+# default: accept (forwarding / stateful firewall / customer ACL decides next)
+accept

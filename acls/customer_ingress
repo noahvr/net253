@@ -1,0 +1,49 @@
+# CUSTOMER INGRESS
+# Apply to customer-facing ports / VLANs (resi, DIA, GPON, etc.)
+# Direction: inbound from customer toward AS396952
+#
+# Intent: allow on-link discovery (ARP / DHCP / DHCPv6), then only
+# forward traffic sourced from net253 netblocks. Everything else drops
+# (spoofed foreign space, martians, etc.).
+
+# ---------------------------------------------------------------------------
+# ALLOWLISTS
+# ---------------------------------------------------------------------------
+
+# Keep in sync with owned / announced space (bgp/net253_bgp.yml)
+NET253_V4 =
+  23.140.108.0/24 ||
+  142.248.74.0/24 ||
+  142.248.75.0/24 ||
+  192.69.184.0/22 ||
+  199.36.252.0/22 ||
+  204.238.8.0/24 ||
+  208.87.163.0/24
+
+NET253_V6 =
+  2602:fec2::/32
+
+# ---------------------------------------------------------------------------
+# POLICY (pseudocode)
+# ---------------------------------------------------------------------------
+
+apply to CUSTOMER_INGRESS ports
+
+# 1) On-link discovery — must work before the host has an address
+if (ethertype == ARP)
+  accept comment="ARP"
+
+# DHCPv4: discover/request from 0.0.0.0, replies to broadcast, etc.
+if (udp dst-port == 67 || udp dst-port == 68)
+  accept comment="DHCPv4"
+
+# DHCPv6: clients usually speak from link-local (fe80::/10)
+if (udp dst-port == 546 || udp dst-port == 547)
+  accept comment="DHCPv6"
+
+# 2) Customer data plane — only packets sourced from our space
+if (src in NET253_V4 || src in NET253_V6)
+  accept comment="sourced from net253 netblock"
+
+# 3) Everything else is spoofed / foreign / improper
+drop comment="not ARP/DHCP and not from net253"
